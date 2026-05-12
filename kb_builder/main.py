@@ -12,8 +12,21 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 
-from kb_builder.llm import DEFAULT_MODEL, Classification, classify_input, configure_litellm
-from kb_builder.storage import append_to_file, get_file_stats, get_kb_dir
+from kb_builder.llm import (
+    DEFAULT_MODEL,
+    Classification,
+    answer_query,
+    classify_input,
+    configure_litellm,
+    detect_intent,
+)
+from kb_builder.storage import (
+    append_to_file,
+    get_file_stats,
+    get_kb_dir,
+    list_md_files,
+    read_file_content,
+)
 from kb_builder.wiki import generate_wiki_index
 
 console = Console()
@@ -27,7 +40,8 @@ def _print_welcome(kb_dir: Path) -> None:
         Panel(
             "[bold cyan]Terminal Knowledge Base Builder[/bold cyan]\n\n"
             "Type anything and it will be classified by an LLM and saved\n"
-            "to the appropriate markdown file in your knowledge base.\n\n"
+            "to the appropriate markdown file in your knowledge base.\n"
+            "Ask questions and it will answer from your stored knowledge.\n\n"
             f"[dim]Knowledge base directory: {kb_dir}[/dim]\n\n"
             "[bold]Commands:[/bold]\n"
             "  [green]:wiki[/green]    - Regenerate the wiki index now\n"
@@ -66,6 +80,42 @@ def _show_wiki(kb_dir: Path) -> None:
         return
     content = wiki_path.read_text(encoding="utf-8")
     console.print(Markdown(content))
+
+
+def _load_kb_content(kb_dir: Path) -> str:
+    """Load all knowledge base markdown content into a single string."""
+    md_files = list_md_files(kb_dir)
+    md_files = [f for f in md_files if f.name.upper() != "WIKI.MD"]
+    if not md_files:
+        return ""
+    parts: list[str] = []
+    for f in md_files:
+        parts.append(f"=== {f.name} ===\n{read_file_content(f)}")
+    return "\n\n".join(parts)
+
+
+def _handle_store(user_input: str, kb_dir: Path, model: str | None) -> None:
+    """Classify user input and store it in the appropriate markdown file."""
+    with console.status("[bold yellow]Classifying...[/bold yellow]"):
+        result = classify_input(user_input, model=model)
+    filepath = append_to_file(kb_dir, result.filename, result.topic, result.markdown)
+    _print_classification(result, filepath)
+
+
+def _handle_query(user_input: str, kb_dir: Path, model: str | None) -> None:
+    """Answer a user question from the knowledge base content."""
+    kb_content = _load_kb_content(kb_dir)
+    if not kb_content:
+        console.print(
+            "\n[yellow]Knowledge base is empty. "
+            "Add some knowledge first, then ask questions![/yellow]\n"
+        )
+        return
+    with console.status("[bold yellow]Searching knowledge base...[/bold yellow]"):
+        response = answer_query(user_input, kb_content, model=model)
+    console.print("\n[bold blue]Answer:[/bold blue]")
+    console.print(Markdown(response))
+    console.print()
 
 
 def _wiki_regen_loop(kb_dir: Path, interval: int, stop_event: threading.Event) -> None:
@@ -190,16 +240,18 @@ def main() -> None:
             _print_welcome(kb_dir)
             continue
 
-        # Classify and store input via LLM
+        # Detect intent: store knowledge or query the KB
         try:
-            with console.status("[bold yellow]Classifying...[/bold yellow]"):
-                result = classify_input(user_input, model=args.model)
+            with console.status("[bold yellow]Thinking...[/bold yellow]"):
+                intent = detect_intent(user_input, model=args.model)
 
-            filepath = append_to_file(kb_dir, result.filename, result.topic, result.markdown)
-            _print_classification(result, filepath)
+            if intent == "query":
+                _handle_query(user_input, kb_dir, args.model)
+            else:
+                _handle_store(user_input, kb_dir, args.model)
         except Exception as e:
             console.print(f"[bold red]Error:[/bold red] {e}")
-            console.print("[dim]Your input was not saved. Please try again.[/dim]")
+            console.print("[dim]Please try again.[/dim]")
 
     # Clean up
     stop_event.set()

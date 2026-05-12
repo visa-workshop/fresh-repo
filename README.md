@@ -158,6 +158,11 @@ kb> Docker containers share the host OS kernel unlike virtual machines
   File:  docker.md
   Saved to knowledge_base/docker.md
 
+kb> what do I know about Python?
+
+  Answer:
+  You know that Python lists are mutable sequences that support indexing and slicing.
+
 kb> :stats
 Knowledge Base Statistics:
   python.md: 8 lines
@@ -166,6 +171,10 @@ Knowledge Base Statistics:
 kb> :wiki
 Wiki index regenerated: knowledge_base/WIKI.md
 ```
+
+The app automatically detects whether you're **storing knowledge** or **asking a question**:
+- Statements, facts, and notes are classified and saved to markdown files
+- Questions are answered by searching the knowledge base and using the LLM to synthesize an answer from stored content
 
 ## Project Structure
 
@@ -185,6 +194,8 @@ knowledge_base/     # Default directory for markdown files
 ## Architecture
 
 - **Input Loop**: Rich-powered terminal prompt that captures user text
-- **LLM Classification**: Each input is sent via LiteLLM (`gpt-4o-mini`) which returns a JSON response with topic, filename, and formatted markdown. Supports custom base URLs and CA bundles for corporate/private deployments.
+- **Intent Detection**: LLM determines if input is knowledge to store or a question to answer
+- **LLM Classification**: Statements are classified via LiteLLM and routed to the correct markdown file. Supports custom base URLs and CA bundles for corporate/private deployments.
+- **Query Answering**: Questions are answered by loading all KB content and using the LLM to synthesize an answer from stored knowledge only
 - **Storage Layer**: Manages markdown files — creates new files with title headers, appends formatted content
 - **Wiki Generator**: Builds `WIKI.md` with table of contents, section listings, word counts, and timestamps. Runs automatically on a configurable interval via a background thread

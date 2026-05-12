@@ -10,7 +10,7 @@ from dataclasses import dataclass
 import httpx
 import litellm
 
-SYSTEM_PROMPT = """\
+CLASSIFY_PROMPT = """\
 You are a knowledge base organizer. The user will give you a piece of text they typed.
 Your job is to:
 1. Determine the TOPIC/CATEGORY this text belongs to
@@ -29,6 +29,28 @@ Respond with valid JSON only:
   "filename": "<filename>.md",
   "markdown": "<formatted markdown snippet to append>"
 }
+"""
+
+INTENT_PROMPT = """\
+You are an intent classifier for a knowledge base application.
+The user types text into a terminal. Decide whether the user is:
+- "store": providing information, facts, notes, or knowledge to save
+- "query": asking a question or requesting information from the knowledge base
+
+Respond with valid JSON only:
+{
+  "intent": "store" or "query"
+}
+"""
+
+QUERY_PROMPT = """\
+You are a helpful assistant that answers questions using ONLY the knowledge base \
+content provided below. If the answer is not in the knowledge base, say so honestly. \
+Do not make up information. Be concise and direct.
+
+--- KNOWLEDGE BASE CONTENT ---
+{kb_content}
+--- END KNOWLEDGE BASE ---
 """
 
 
@@ -71,12 +93,33 @@ def get_model() -> str:
     return os.environ.get("LITELLM_MODEL", DEFAULT_MODEL)
 
 
+def detect_intent(user_text: str, model: str | None = None) -> str:
+    """Detect whether the user wants to store information or query the KB.
+
+    Returns "store" or "query".
+    """
+    response = litellm.completion(
+        model=model or get_model(),
+        messages=[
+            {"role": "system", "content": INTENT_PROMPT},
+            {"role": "user", "content": user_text},
+        ],
+        temperature=0.1,
+        response_format={"type": "json_object"},
+    )
+
+    content = response.choices[0].message.content or "{}"
+    data = json.loads(content)
+    intent = data.get("intent", "store")
+    return intent if intent in ("store", "query") else "store"
+
+
 def classify_input(user_text: str, model: str | None = None) -> Classification:
     """Send user input to the LLM and get back a classification with formatted markdown."""
     response = litellm.completion(
         model=model or get_model(),
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": CLASSIFY_PROMPT},
             {"role": "user", "content": user_text},
         ],
         temperature=0.3,
@@ -91,3 +134,18 @@ def classify_input(user_text: str, model: str | None = None) -> Classification:
         filename=data.get("filename", "general.md"),
         markdown=data.get("markdown", user_text),
     )
+
+
+def answer_query(user_text: str, kb_content: str, model: str | None = None) -> str:
+    """Answer a user question using the knowledge base content as context."""
+    system_msg = QUERY_PROMPT.format(kb_content=kb_content)
+    response = litellm.completion(
+        model=model or get_model(),
+        messages=[
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": user_text},
+        ],
+        temperature=0.3,
+    )
+
+    return response.choices[0].message.content or "I couldn't generate an answer."
