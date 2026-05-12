@@ -28,6 +28,28 @@ export OPENAI_KEY="your-api-key"
 export OPENAI_API_KEY="your-api-key"
 ```
 
+### LLM Model (optional)
+
+By default the app uses `gpt-4o-mini`. You can change the model via environment variable or CLI flag:
+
+```bash
+# Via environment variable
+export LITELLM_MODEL="gpt-4o"
+
+# Or via CLI flag
+kb-builder --model gpt-4o
+kb-builder -m claude-3-haiku-20240307
+```
+
+Since this app uses [LiteLLM](https://docs.litellm.ai/docs/providers), you can use any model from any supported provider. Some examples:
+- **OpenAI**: `gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo`
+- **Anthropic**: `claude-3-haiku-20240307`, `claude-3-sonnet-20240229`
+- **Azure OpenAI**: `azure/my-deployment-name`
+- **Ollama (local)**: `ollama/llama3`, `ollama/mistral`
+- **AWS Bedrock**: `bedrock/anthropic.claude-3-sonnet-20240229-v1:0`
+
+The CLI `--model` flag takes priority over the `LITELLM_MODEL` environment variable.
+
 ### Custom Base URL (optional)
 
 If you're using a custom LLM endpoint (corporate proxy, Azure OpenAI, local LLM server, etc.), set the base URL:
@@ -77,6 +99,9 @@ export LITELLM_BASE_URL="https://api-gateway.internal.company.com/openai/v1"
 # Use corporate CA bundle for TLS
 export REQUESTS_CA_BUNDLE="/etc/ssl/certs/corporate-ca-bundle.crt"
 
+# Use a custom model
+kb-builder --model gpt-4o
+
 # Start the knowledge base builder
 kb-builder
 ```
@@ -87,6 +112,7 @@ kb-builder
 |----------------------|----------|--------------------------------------------------|
 | `OPENAI_KEY`         | Yes*     | OpenAI API key                                   |
 | `OPENAI_API_KEY`     | Yes*     | OpenAI API key (alternative)                     |
+| `LITELLM_MODEL`      | No       | LLM model name (default: `gpt-4o-mini`)           |
 | `LITELLM_BASE_URL`   | No       | Custom LLM API base URL                          |
 | `OPENAI_BASE_URL`    | No       | Custom base URL (OpenAI-compatible alternative)   |
 | `REQUESTS_CA_BUNDLE` | No       | Path to custom CA certificate bundle (PEM format) |

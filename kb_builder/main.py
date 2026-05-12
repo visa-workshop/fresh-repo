@@ -12,7 +12,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 
-from kb_builder.llm import Classification, classify_input, configure_litellm
+from kb_builder.llm import DEFAULT_MODEL, Classification, classify_input, configure_litellm
 from kb_builder.storage import append_to_file, get_file_stats, get_kb_dir
 from kb_builder.wiki import generate_wiki_index
 
@@ -106,6 +106,13 @@ def main() -> None:
         default=DEFAULT_WIKI_INTERVAL,
         help=f"Wiki auto-regeneration interval in seconds (default: {DEFAULT_WIKI_INTERVAL})",
     )
+    parser.add_argument(
+        "-m",
+        "--model",
+        type=str,
+        default=None,
+        help=f"LLM model name (default: {DEFAULT_MODEL}, or set LITELLM_MODEL env var)",
+    )
     args = parser.parse_args()
 
     kb_dir = get_kb_dir(args.directory)
@@ -186,7 +193,7 @@ def main() -> None:
         # Classify and store input via LLM
         try:
             with console.status("[bold yellow]Classifying...[/bold yellow]"):
-                result = classify_input(user_input)
+                result = classify_input(user_input, model=args.model)
 
             filepath = append_to_file(kb_dir, result.filename, result.topic, result.markdown)
             _print_classification(result, filepath)

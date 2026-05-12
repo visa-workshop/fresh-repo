@@ -63,10 +63,18 @@ def configure_litellm() -> None:
         litellm.aclient_session = httpx.AsyncClient(verify=ssl_ctx)
 
 
-def classify_input(user_text: str) -> Classification:
+DEFAULT_MODEL = "gpt-4o-mini"
+
+
+def get_model() -> str:
+    """Return the configured model name from env var or default."""
+    return os.environ.get("LITELLM_MODEL", DEFAULT_MODEL)
+
+
+def classify_input(user_text: str, model: str | None = None) -> Classification:
     """Send user input to the LLM and get back a classification with formatted markdown."""
     response = litellm.completion(
-        model="gpt-4o-mini",
+        model=model or get_model(),
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_text},
