@@ -1,6 +1,6 @@
 # Terminal Knowledge Base Builder
 
-A terminal application that listens to your input, uses an LLM (OpenAI) to classify and organize it, and maintains a structured markdown knowledge base with an auto-generated wiki index.
+A terminal application that listens to your input, uses an LLM (via [LiteLLM](https://docs.litellm.ai/)) to classify and organize it, and maintains a structured markdown knowledge base with an auto-generated wiki index.
 
 ## How It Works
 
@@ -16,7 +16,9 @@ A terminal application that listens to your input, uses an LLM (OpenAI) to class
 pip install -e .
 ```
 
-## Setup
+## Configuration
+
+### API Key (required)
 
 Set your OpenAI API key:
 
@@ -25,6 +27,72 @@ export OPENAI_KEY="your-api-key"
 # or
 export OPENAI_API_KEY="your-api-key"
 ```
+
+### Custom Base URL (optional)
+
+If you're using a custom LLM endpoint (corporate proxy, Azure OpenAI, local LLM server, etc.), set the base URL:
+
+```bash
+# Using LiteLLM-specific variable (recommended)
+export LITELLM_BASE_URL="https://your-proxy.company.com/v1"
+
+# Or using OpenAI-compatible variable
+export OPENAI_BASE_URL="https://your-proxy.company.com/v1"
+```
+
+Common use cases:
+- **Corporate API proxy**: `https://api-gateway.internal.company.com/openai/v1`
+- **Azure OpenAI**: `https://your-resource.openai.azure.com`
+- **Local LLM (Ollama, vLLM, etc.)**: `http://localhost:11434/v1`
+- **LiteLLM proxy server**: `http://localhost:4000`
+
+### Custom CA Bundle (optional)
+
+If your corporate environment uses a custom/internal Certificate Authority (CA), attach your CA bundle so TLS verification works:
+
+```bash
+# Standard environment variable (works with most Python HTTP libraries)
+export REQUESTS_CA_BUNDLE="/path/to/your/ca-bundle.crt"
+
+# Or using the OpenSSL-compatible variable
+export SSL_CERT_FILE="/path/to/your/ca-bundle.crt"
+```
+
+This is commonly needed when:
+- Your organization uses a corporate TLS inspection proxy
+- You're connecting through a VPN with custom certificates
+- Your API endpoint uses an internal/self-signed certificate
+
+The CA bundle file should be a PEM-formatted file containing one or more CA certificates. You can typically get this from your IT department or export it from your system's certificate store.
+
+### Full Corporate Setup Example
+
+```bash
+# API key
+export OPENAI_API_KEY="sk-..."
+
+# Route through corporate proxy
+export LITELLM_BASE_URL="https://api-gateway.internal.company.com/openai/v1"
+
+# Use corporate CA bundle for TLS
+export REQUESTS_CA_BUNDLE="/etc/ssl/certs/corporate-ca-bundle.crt"
+
+# Start the knowledge base builder
+kb-builder
+```
+
+### Environment Variables Reference
+
+| Variable             | Required | Description                                      |
+|----------------------|----------|--------------------------------------------------|
+| `OPENAI_KEY`         | Yes*     | OpenAI API key                                   |
+| `OPENAI_API_KEY`     | Yes*     | OpenAI API key (alternative)                     |
+| `LITELLM_BASE_URL`   | No       | Custom LLM API base URL                          |
+| `OPENAI_BASE_URL`    | No       | Custom base URL (OpenAI-compatible alternative)   |
+| `REQUESTS_CA_BUNDLE` | No       | Path to custom CA certificate bundle (PEM format) |
+| `SSL_CERT_FILE`      | No       | Path to CA certificate file (alternative)         |
+
+\* At least one of `OPENAI_KEY` or `OPENAI_API_KEY` must be set.
 
 ## Usage
 
@@ -79,15 +147,18 @@ Wiki index regenerated: knowledge_base/WIKI.md
 kb_builder/
 ├── __init__.py     # Package init
 ├── main.py         # Terminal input loop + periodic wiki regen
-├── llm.py          # OpenAI classification and routing
+├── llm.py          # LiteLLM classification and routing
 ├── storage.py      # Markdown file read/write management
 └── wiki.py         # Wiki index generator
+docs/
+├── HIGH_LEVEL_DESIGN.md   # System architecture (Mermaid diagrams)
+└── LOW_LEVEL_DESIGN.md    # Module-level design (Mermaid diagrams)
 knowledge_base/     # Default directory for markdown files
 ```
 
 ## Architecture
 
 - **Input Loop**: Rich-powered terminal prompt that captures user text
-- **LLM Classification**: Each input is sent to OpenAI (`gpt-4o-mini`) which returns a JSON response with topic, filename, and formatted markdown
+- **LLM Classification**: Each input is sent via LiteLLM (`gpt-4o-mini`) which returns a JSON response with topic, filename, and formatted markdown. Supports custom base URLs and CA bundles for corporate/private deployments.
 - **Storage Layer**: Manages markdown files — creates new files with title headers, appends formatted content
 - **Wiki Generator**: Builds `WIKI.md` with table of contents, section listings, word counts, and timestamps. Runs automatically on a configurable interval via a background thread

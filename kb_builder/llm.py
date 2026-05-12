@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import os
+import ssl
 from dataclasses import dataclass
 
+import httpx
 import litellm
 
 SYSTEM_PROMPT = """\
@@ -37,8 +39,8 @@ class Classification:
     markdown: str
 
 
-def validate_api_key() -> None:
-    """Ensure an OpenAI API key is available for litellm."""
+def configure_litellm() -> None:
+    """Configure litellm with API key, optional base URL, and optional CA bundle."""
     api_key = os.environ.get("OPENAI_KEY") or os.environ.get("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError(
@@ -47,6 +49,18 @@ def validate_api_key() -> None:
     # litellm reads OPENAI_API_KEY by default; sync if only OPENAI_KEY is set
     if not os.environ.get("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = api_key
+
+    # Custom base URL (e.g. corporate proxy, Azure, local LLM server)
+    base_url = os.environ.get("LITELLM_BASE_URL") or os.environ.get("OPENAI_BASE_URL")
+    if base_url:
+        litellm.api_base = base_url
+
+    # Custom CA bundle for TLS verification
+    ca_bundle = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE")
+    if ca_bundle:
+        ssl_ctx = ssl.create_default_context(cafile=ca_bundle)
+        litellm.client_session = httpx.Client(verify=ssl_ctx)
+        litellm.aclient_session = httpx.AsyncClient(verify=ssl_ctx)
 
 
 def classify_input(user_text: str) -> Classification:

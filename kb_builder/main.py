@@ -12,7 +12,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 
-from kb_builder.llm import Classification, classify_input, validate_api_key
+from kb_builder.llm import Classification, classify_input, configure_litellm
 from kb_builder.storage import append_to_file, get_file_stats, get_kb_dir
 from kb_builder.wiki import generate_wiki_index
 
@@ -111,9 +111,9 @@ def main() -> None:
     kb_dir = get_kb_dir(args.directory)
     _print_welcome(kb_dir)
 
-    # Validate API key is available for litellm
+    # Configure litellm (API key, base URL, CA bundle)
     try:
-        validate_api_key()
+        configure_litellm()
     except RuntimeError as e:
         console.print(f"[bold red]Error:[/bold red] {e}")
         sys.exit(1)
