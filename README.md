@@ -5,9 +5,13 @@ A terminal application that listens to your input, uses an LLM (via [LiteLLM](ht
 ## How It Works
 
 1. **You type** anything into the terminal — notes, facts, code snippets, ideas
-2. **LLM classifies** your input, determining the topic and target markdown file
-3. **Content is appended** to the appropriate markdown file with proper formatting
-4. **Wiki is auto-regenerated** periodically, keeping an up-to-date index of all topics
+2. **LLM detects intent** — whether you're storing knowledge or asking a question
+3. **Stores**: LLM classifies input, determines topic, appends to the right markdown file
+4. **Queries**: LLM searches your KB and answers from stored knowledge
+5. **Ingest**: Import raw documents or clip web articles into the KB via LLM compilation
+6. **Wiki is auto-regenerated** periodically with backlinks and cross-references
+7. **Lint**: LLM health checks find inconsistencies, gaps, and suggest connections
+8. **Web UI**: Built-in viewer to browse your KB in the browser
 
 ## Installation
 
@@ -131,17 +135,29 @@ kb-builder -d /path/to/my/knowledge-base
 
 # Set wiki regeneration interval (default: 60s)
 kb-builder --wiki-interval 30
+
+# Start with web UI viewer
+kb-builder --web
+
+# Custom web UI port
+kb-builder --web --web-port 9090
 ```
 
 ### Commands
 
-| Command  | Description                        |
-|----------|------------------------------------|
-| `:wiki`  | Regenerate the wiki index now      |
-| `:stats` | Show knowledge base statistics     |
-| `:show`  | Display the current wiki index     |
-| `:help`  | Show help message                  |
-| `:quit`  | Exit the application               |
+| Command            | Description                                     |
+|--------------------|--------------------------------------------------|
+| `:wiki`            | Regenerate the wiki index now                    |
+| `:stats`           | Show knowledge base statistics                   |
+| `:show`            | Display the current wiki index                   |
+| `:ingest <path>`   | Ingest a file or directory into the KB            |
+| `:clip <url>`      | Clip a web article and ingest into the KB         |
+| `:search <query>`  | Full-text search across all KB content            |
+| `:lint`            | Run LLM health checks on the KB                  |
+| `:save`            | File the last query answer back into the KB       |
+| `:web`             | Start the built-in web UI viewer                  |
+| `:help`            | Show help message                                 |
+| `:quit`            | Exit the application                              |
 
 ### Example Session
 
@@ -161,12 +177,45 @@ kb> Docker containers share the host OS kernel unlike virtual machines
 kb> what do I know about Python?
 
   Answer:
-  You know that Python lists are mutable sequences that support indexing and slicing.
+  Python lists are mutable sequences that support indexing and slicing.
+  Use :save to file this answer into the KB
+
+kb> :save
+
+  Answer filed: Python
+  File:        python-answers.md
+
+kb> :clip https://docs.python.org/3/glossary.html
+
+  Clipped: https://docs.python.org/3/glossary.html
+  Topic:   Python Glossary
+  File:    python-glossary.md
+
+kb> :search decorator
+
+  Found 2 match(es) for 'decorator':
+  python.md (line 3): Decorators are functions that modify other functions.
+
+kb> :ingest ./my_notes/
+
+  Ingested 5 files.
+
+kb> :lint
+
+  Health Score: 7/10
+  Missing Data:
+    - Examples of decorators in use
+  Connection Suggestions:
+    - Link 'Python' and 'Python Glossary' articles
+
+kb> :web
+  Web UI started at http://localhost:8899
 
 kb> :stats
 Knowledge Base Statistics:
   python.md: 8 lines
   docker.md: 6 lines
+  python-glossary.md: 32 lines
 
 kb> :wiki
 Wiki index regenerated: knowledge_base/WIKI.md
@@ -175,16 +224,22 @@ Wiki index regenerated: knowledge_base/WIKI.md
 The app automatically detects whether you're **storing knowledge** or **asking a question**:
 - Statements, facts, and notes are classified and saved to markdown files
 - Questions are answered by searching the knowledge base and using the LLM to synthesize an answer from stored content
+- Query answers can be filed back into the KB with `:save` so explorations "add up"
 
 ## Project Structure
 
 ```
 kb_builder/
 ├── __init__.py     # Package init
-├── main.py         # Terminal input loop + periodic wiki regen
-├── llm.py          # LiteLLM classification and routing
+├── main.py         # Terminal input loop + command handling
+├── llm.py          # LiteLLM classification, intent detection, Q&A
 ├── storage.py      # Markdown file read/write management
-└── wiki.py         # Wiki index generator
+├── wiki.py         # Wiki index generator with backlinks
+├── ingest.py       # Raw document ingestion via LLM compilation
+├── clip.py         # Web article clipping and ingestion
+├── search.py       # Full-text search across KB content
+├── lint_kb.py      # LLM-powered KB health checks
+└── webui.py        # Built-in web UI viewer
 docs/
 ├── HIGH_LEVEL_DESIGN.md   # System architecture (Mermaid diagrams)
 └── LOW_LEVEL_DESIGN.md    # Module-level design (Mermaid diagrams)
@@ -193,9 +248,14 @@ knowledge_base/     # Default directory for markdown files
 
 ## Architecture
 
-- **Input Loop**: Rich-powered terminal prompt that captures user text
+- **Input Loop**: Rich-powered terminal prompt that captures user text and commands
 - **Intent Detection**: LLM determines if input is knowledge to store or a question to answer
-- **LLM Classification**: Statements are classified via LiteLLM and routed to the correct markdown file. Supports custom base URLs and CA bundles for corporate/private deployments.
-- **Query Answering**: Questions are answered by loading all KB content and using the LLM to synthesize an answer from stored knowledge only
+- **LLM Classification**: Statements are classified via LiteLLM and routed to the correct markdown file
+- **Query Answering**: Questions are answered from stored knowledge; answers can be filed back into the KB
+- **Data Ingest**: Raw documents (text, code, markdown) are compiled by the LLM into structured KB entries
+- **Web Clipping**: Web articles are fetched, converted to markdown, and ingested via LLM compilation
+- **Search**: Full-text search across all KB content with context highlighting
+- **Linting**: LLM-powered health checks find inconsistencies, missing data, integrity issues, and suggest connections
 - **Storage Layer**: Manages markdown files — creates new files with title headers, appends formatted content
-- **Wiki Generator**: Builds `WIKI.md` with table of contents, section listings, word counts, and timestamps. Runs automatically on a configurable interval via a background thread
+- **Wiki Generator**: Builds `WIKI.md` with table of contents, section listings, backlinks, word counts, and timestamps
+- **Web UI**: Built-in HTTP server with dark-themed viewer, sidebar navigation, and topic filtering

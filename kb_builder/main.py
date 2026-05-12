@@ -12,6 +12,9 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 
+from kb_builder.clip import clip_url
+from kb_builder.ingest import ingest_directory, ingest_file
+from kb_builder.lint_kb import lint_knowledge_base
 from kb_builder.llm import (
     DEFAULT_MODEL,
     Classification,
@@ -20,6 +23,7 @@ from kb_builder.llm import (
     configure_litellm,
     detect_intent,
 )
+from kb_builder.search import search_kb
 from kb_builder.storage import (
     append_to_file,
     get_file_stats,
@@ -27,12 +31,15 @@ from kb_builder.storage import (
     list_md_files,
     read_file_content,
 )
+from kb_builder.webui import start_web_ui
 from kb_builder.wiki import generate_wiki_index
 
 console = Console()
 
-# How often (in seconds) the wiki index is auto-regenerated
 DEFAULT_WIKI_INTERVAL = 60
+
+# Stores the last query answer so it can be filed back with :save
+_last_query_answer: str | None = None
 
 
 def _print_welcome(kb_dir: Path) -> None:
@@ -44,11 +51,17 @@ def _print_welcome(kb_dir: Path) -> None:
             "Ask questions and it will answer from your stored knowledge.\n\n"
             f"[dim]Knowledge base directory: {kb_dir}[/dim]\n\n"
             "[bold]Commands:[/bold]\n"
-            "  [green]:wiki[/green]    - Regenerate the wiki index now\n"
-            "  [green]:stats[/green]   - Show knowledge base statistics\n"
-            "  [green]:show[/green]    - Show the current wiki index\n"
-            "  [green]:quit[/green]    - Exit the application\n"
-            "  [green]:help[/green]    - Show this help message",
+            "  [green]:wiki[/green]           - Regenerate the wiki index now\n"
+            "  [green]:stats[/green]          - Show knowledge base statistics\n"
+            "  [green]:show[/green]           - Display the current wiki index\n"
+            "  [green]:ingest <path>[/green]  - Ingest a file or directory into KB\n"
+            "  [green]:clip <url>[/green]     - Clip a web article into KB\n"
+            "  [green]:search <query>[/green] - Search across KB content\n"
+            "  [green]:lint[/green]           - Run LLM health checks on KB\n"
+            "  [green]:save[/green]           - Save last query answer to KB\n"
+            "  [green]:web[/green]            - Start web UI viewer\n"
+            "  [green]:quit[/green]           - Exit the application\n"
+            "  [green]:help[/green]           - Show this help message",
             title="KB Builder",
             border_style="cyan",
         )
@@ -104,6 +117,7 @@ def _handle_store(user_input: str, kb_dir: Path, model: str | None) -> None:
 
 def _handle_query(user_input: str, kb_dir: Path, model: str | None) -> None:
     """Answer a user question from the knowledge base content."""
+    global _last_query_answer
     kb_content = _load_kb_content(kb_dir)
     if not kb_content:
         console.print(
@@ -113,9 +127,101 @@ def _handle_query(user_input: str, kb_dir: Path, model: str | None) -> None:
         return
     with console.status("[bold yellow]Searching knowledge base...[/bold yellow]"):
         response = answer_query(user_input, kb_content, model=model)
+    _last_query_answer = response
     console.print("\n[bold blue]Answer:[/bold blue]")
     console.print(Markdown(response))
+    console.print("[dim]Use :save to file this answer into the KB[/dim]")
     console.print()
+
+
+def _handle_ingest(arg: str, kb_dir: Path, model: str | None) -> None:
+    """Ingest a file or directory into the knowledge base."""
+    path = Path(arg).expanduser().resolve()
+    if not path.exists():
+        console.print(f"[red]Path not found: {path}[/red]")
+        return
+
+    if path.is_file():
+        with console.status(f"[bold yellow]Ingesting {path.name}...[/bold yellow]"):
+            topic, filename, saved = ingest_file(path, kb_dir, model=model)
+        console.print(f"\n  [bold green]Ingested:[/bold green] {path.name}")
+        console.print(f"  [bold green]Topic:[/bold green]    {topic}")
+        console.print(f"  [bold green]File:[/bold green]     {filename}")
+        console.print(f"  [dim]Saved to {saved}[/dim]\n")
+    elif path.is_dir():
+        console.print(f"[cyan]Ingesting directory: {path}[/cyan]")
+        results = ingest_directory(path, kb_dir, model=model)
+        if not results:
+            console.print("[yellow]No supported files found.[/yellow]")
+        else:
+            for topic, filename, saved in results:
+                console.print(f"  [green]{filename}[/green] ({topic}) -> {saved.name}")
+            console.print(f"\n[bold green]Ingested {len(results)} files.[/bold green]\n")
+
+
+def _handle_clip(url: str, kb_dir: Path, model: str | None) -> None:
+    """Clip a web article and ingest it."""
+    with console.status(f"[bold yellow]Clipping {url}...[/bold yellow]"):
+        topic, filename, saved = clip_url(url, kb_dir, model=model)
+    console.print(f"\n  [bold green]Clipped:[/bold green] {url}")
+    console.print(f"  [bold green]Topic:[/bold green]   {topic}")
+    console.print(f"  [bold green]File:[/bold green]    {filename}")
+    console.print(f"  [dim]Saved to {saved}[/dim]\n")
+
+
+def _handle_search(query: str, kb_dir: Path) -> None:
+    """Search across KB content."""
+    results = search_kb(kb_dir, query)
+    if not results:
+        console.print(f"[yellow]No results for '{query}'[/yellow]")
+        return
+    console.print(f"\n[bold]Found {len(results)} match(es) for '{query}':[/bold]\n")
+    for r in results[:20]:
+        console.print(f"  [bold cyan]{r.filename}[/bold cyan] (line {r.line_number}):")
+        for ctx_line in r.context.splitlines():
+            console.print(f"    {ctx_line}")
+        console.print()
+
+
+def _handle_lint(kb_dir: Path, model: str | None) -> None:
+    """Run LLM health checks on the KB."""
+    with console.status("[bold yellow]Running KB health checks...[/bold yellow]"):
+        report = lint_knowledge_base(kb_dir, model=model)
+
+    score = report.get("score", 0)
+    color = "green" if score >= 7 else "yellow" if score >= 4 else "red"
+    console.print(f"\n[bold {color}]Health Score: {score}/10[/bold {color}]")
+    console.print(f"[dim]{report.get('summary', '')}[/dim]\n")
+
+    sections = [
+        ("Inconsistencies", "inconsistencies", "red"),
+        ("Missing Data", "missing_data", "yellow"),
+        ("Connection Suggestions", "connections", "cyan"),
+        ("Integrity Issues", "integrity_issues", "red"),
+        ("Enhancement Ideas", "enhancements", "green"),
+    ]
+    for title, key, clr in sections:
+        items = report.get(key, [])
+        if items:
+            console.print(f"[bold {clr}]{title}:[/bold {clr}]")
+            for item in items:
+                console.print(f"  - {item}")
+            console.print()
+
+
+def _handle_save(kb_dir: Path, model: str | None) -> None:
+    """Save the last query answer back into the KB."""
+    global _last_query_answer
+    if not _last_query_answer:
+        console.print("[yellow]No recent query answer to save.[/yellow]")
+        return
+    with console.status("[bold yellow]Filing answer into KB...[/bold yellow]"):
+        result = classify_input(_last_query_answer, model=model)
+    filepath = append_to_file(kb_dir, result.filename, result.topic, result.markdown)
+    console.print(f"\n  [bold green]Answer filed:[/bold green] {result.topic}")
+    console.print(f"  [bold green]File:[/bold green]        {filepath.name}")
+    console.print(f"  [dim]Saved to {filepath}[/dim]\n")
+    _last_query_answer = None
 
 
 def _wiki_regen_loop(kb_dir: Path, interval: int, stop_event: threading.Event) -> None:
@@ -126,7 +232,6 @@ def _wiki_regen_loop(kb_dir: Path, interval: int, stop_event: threading.Event) -
             break
         try:
             md_files = list(kb_dir.glob("*.md"))
-            # Only regenerate if there are topic files (excluding WIKI.md)
             topic_files = [f for f in md_files if f.name.upper() != "WIKI.MD"]
             if topic_files:
                 generate_wiki_index(kb_dir)
@@ -163,6 +268,17 @@ def main() -> None:
         default=None,
         help=f"LLM model name (default: {DEFAULT_MODEL}, or set LITELLM_MODEL env var)",
     )
+    parser.add_argument(
+        "--web",
+        action="store_true",
+        help="Start the web UI viewer on launch",
+    )
+    parser.add_argument(
+        "--web-port",
+        type=int,
+        default=8899,
+        help="Port for the web UI viewer (default: 8899)",
+    )
     args = parser.parse_args()
 
     kb_dir = get_kb_dir(args.directory)
@@ -174,6 +290,11 @@ def main() -> None:
     except RuntimeError as e:
         console.print(f"[bold red]Error:[/bold red] {e}")
         sys.exit(1)
+
+    # Optionally start web UI on launch
+    if args.web:
+        _, port = start_web_ui(kb_dir, args.web_port)
+        console.print(f"[bold green]Web UI started at http://localhost:{port}[/bold green]\n")
 
     # Start background wiki regeneration thread
     stop_event = threading.Event()
@@ -187,7 +308,6 @@ def main() -> None:
     def _handle_sigint(signum: int, frame: object) -> None:
         console.print("\n[yellow]Shutting down...[/yellow]")
         stop_event.set()
-        # Final wiki regeneration
         try:
             generate_wiki_index(kb_dir)
             console.print("[green]Final wiki index generated.[/green]")
@@ -209,8 +329,10 @@ def main() -> None:
         if not user_input:
             continue
 
+        lower = user_input.lower()
+
         # Handle commands
-        if user_input.lower() == ":quit":
+        if lower == ":quit":
             console.print("[yellow]Shutting down...[/yellow]")
             stop_event.set()
             try:
@@ -220,7 +342,7 @@ def main() -> None:
                 pass
             break
 
-        if user_input.lower() == ":wiki":
+        if lower == ":wiki":
             try:
                 wiki_path = generate_wiki_index(kb_dir)
                 console.print(f"[green]Wiki index regenerated: {wiki_path}[/green]")
@@ -228,16 +350,68 @@ def main() -> None:
                 console.print(f"[red]Error generating wiki: {e}[/red]")
             continue
 
-        if user_input.lower() == ":stats":
+        if lower == ":stats":
             _show_stats(kb_dir)
             continue
 
-        if user_input.lower() == ":show":
+        if lower == ":show":
             _show_wiki(kb_dir)
             continue
 
-        if user_input.lower() == ":help":
+        if lower == ":help":
             _print_welcome(kb_dir)
+            continue
+
+        if lower.startswith(":ingest "):
+            arg = user_input[8:].strip()
+            if not arg:
+                console.print("[red]Usage: :ingest <file_or_directory>[/red]")
+            else:
+                try:
+                    _handle_ingest(arg, kb_dir, args.model)
+                except Exception as e:
+                    console.print(f"[bold red]Ingest error:[/bold red] {e}")
+            continue
+
+        if lower.startswith(":clip "):
+            url = user_input[6:].strip()
+            if not url:
+                console.print("[red]Usage: :clip <url>[/red]")
+            else:
+                try:
+                    _handle_clip(url, kb_dir, args.model)
+                except Exception as e:
+                    console.print(f"[bold red]Clip error:[/bold red] {e}")
+            continue
+
+        if lower.startswith(":search "):
+            query = user_input[8:].strip()
+            if not query:
+                console.print("[red]Usage: :search <query>[/red]")
+            else:
+                _handle_search(query, kb_dir)
+            continue
+
+        if lower == ":lint":
+            try:
+                _handle_lint(kb_dir, args.model)
+            except Exception as e:
+                console.print(f"[bold red]Lint error:[/bold red] {e}")
+            continue
+
+        if lower == ":save":
+            try:
+                _handle_save(kb_dir, args.model)
+            except Exception as e:
+                console.print(f"[bold red]Save error:[/bold red] {e}")
+            continue
+
+        if lower == ":web":
+            try:
+                _, port = start_web_ui(kb_dir, args.web_port)
+                console.print(f"[bold green]Web UI started at http://localhost:{port}[/bold green]")
+            except Exception as e:
+                console.print(f"[bold red]Web UI error:[/bold red] {e}")
             continue
 
         # Detect intent: store knowledge or query the KB
