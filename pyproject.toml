@@ -5,7 +5,7 @@ description = "Terminal knowledge base builder - listens to input, classifies vi
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "openai>=1.0.0",
+    "litellm>=1.0.0",
     "rich>=13.0.0",
     "prompt-toolkit>=3.0.0",
 ]

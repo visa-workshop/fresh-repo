@@ -12,7 +12,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 
-from kb_builder.llm import Classification, classify_input, get_client
+from kb_builder.llm import Classification, classify_input, validate_api_key
 from kb_builder.storage import append_to_file, get_file_stats, get_kb_dir
 from kb_builder.wiki import generate_wiki_index
 
@@ -111,9 +111,9 @@ def main() -> None:
     kb_dir = get_kb_dir(args.directory)
     _print_welcome(kb_dir)
 
-    # Initialize OpenAI client
+    # Validate API key is available for litellm
     try:
-        client = get_client()
+        validate_api_key()
     except RuntimeError as e:
         console.print(f"[bold red]Error:[/bold red] {e}")
         sys.exit(1)
@@ -186,7 +186,7 @@ def main() -> None:
         # Classify and store input via LLM
         try:
             with console.status("[bold yellow]Classifying...[/bold yellow]"):
-                result = classify_input(client, user_input)
+                result = classify_input(user_input)
 
             filepath = append_to_file(kb_dir, result.filename, result.topic, result.markdown)
             _print_classification(result, filepath)

@@ -6,7 +6,7 @@ import json
 import os
 from dataclasses import dataclass
 
-from openai import OpenAI
+import litellm
 
 SYSTEM_PROMPT = """\
 You are a knowledge base organizer. The user will give you a piece of text they typed.
@@ -37,18 +37,21 @@ class Classification:
     markdown: str
 
 
-def get_client() -> OpenAI:
+def validate_api_key() -> None:
+    """Ensure an OpenAI API key is available for litellm."""
     api_key = os.environ.get("OPENAI_KEY") or os.environ.get("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError(
             "No OpenAI API key found. Set OPENAI_KEY or OPENAI_API_KEY environment variable."
         )
-    return OpenAI(api_key=api_key)
+    # litellm reads OPENAI_API_KEY by default; sync if only OPENAI_KEY is set
+    if not os.environ.get("OPENAI_API_KEY"):
+        os.environ["OPENAI_API_KEY"] = api_key
 
 
-def classify_input(client: OpenAI, user_text: str) -> Classification:
+def classify_input(user_text: str) -> Classification:
     """Send user input to the LLM and get back a classification with formatted markdown."""
-    response = client.chat.completions.create(
+    response = litellm.completion(
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
