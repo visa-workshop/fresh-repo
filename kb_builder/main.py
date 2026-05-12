@@ -8,6 +8,8 @@ import sys
 import threading
 from pathlib import Path
 
+from prompt_toolkit import PromptSession
+from prompt_toolkit.history import FileHistory
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -372,10 +374,16 @@ def main() -> None:
 
     signal.signal(signal.SIGINT, _handle_sigint)
 
+    # Set up prompt with history (arrow keys, readline editing)
+    history_file = kb_dir / ".kb_history"
+    session: PromptSession[str] = PromptSession(
+        history=FileHistory(str(history_file)),
+    )
+
     # Main input loop
     while True:
         try:
-            user_input = console.input("[bold cyan]kb>[/bold cyan] ").strip()
+            user_input = session.prompt("kb> ").strip()
         except (EOFError, KeyboardInterrupt):
             console.print("\n[yellow]Goodbye![/yellow]")
             stop_event.set()
