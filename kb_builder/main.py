@@ -31,6 +31,12 @@ from kb_builder.storage import (
     list_md_files,
     read_file_content,
 )
+from kb_builder.tasks import (
+    generate_daily_summary,
+    generate_weekly_summary,
+    load_tasks,
+    log_task,
+)
 from kb_builder.webui import start_web_ui
 from kb_builder.wiki import generate_wiki_index
 
@@ -59,6 +65,10 @@ def _print_welcome(kb_dir: Path) -> None:
             "  [green]:search <query>[/green] - Search across KB content\n"
             "  [green]:lint[/green]           - Run LLM health checks on KB\n"
             "  [green]:save[/green]           - Save last query answer to KB\n"
+            "  [green]:task <text>[/green]    - Log a timestamped task/activity\n"
+            "  [green]:tasks[/green]          - Show recent task entries\n"
+            "  [green]:daily[/green]          - Generate today's summary\n"
+            "  [green]:weekly[/green]         - Generate weekly summary\n"
             "  [green]:web[/green]            - Start web UI viewer\n"
             "  [green]:quit[/green]           - Exit the application\n"
             "  [green]:help[/green]           - Show this help message",
@@ -222,6 +232,51 @@ def _handle_save(kb_dir: Path, model: str | None) -> None:
     console.print(f"  [bold green]File:[/bold green]        {filepath.name}")
     console.print(f"  [dim]Saved to {filepath}[/dim]\n")
     _last_query_answer = None
+
+
+def _handle_task(description: str, kb_dir: Path) -> None:
+    """Log a timestamped task entry."""
+    from datetime import timezone
+
+    ts = log_task(kb_dir, description)
+    local_str = ts.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    console.print(f"\n  [bold green]Task logged:[/bold green] {description}")
+    console.print(f"  [dim]{local_str}[/dim]\n")
+
+
+def _handle_tasks(kb_dir: Path) -> None:
+    """Show recent task entries."""
+    entries = load_tasks(kb_dir, limit=20)
+    if not entries:
+        console.print("[yellow]No task entries yet. Use :task <description> to log.[/yellow]")
+        return
+    console.print("\n[bold]Recent Task Entries:[/bold]\n")
+    from datetime import datetime
+
+    for entry in entries:
+        ts = datetime.fromisoformat(entry["timestamp"])
+        day_name = ts.strftime("%a")
+        time_str = ts.strftime("%Y-%m-%d %H:%M")
+        console.print(f"  [cyan]{day_name} {time_str}[/cyan]  {entry['description']}")
+    console.print()
+
+
+def _handle_weekly(kb_dir: Path, model: str | None) -> None:
+    """Generate weekly summary."""
+    with console.status("[bold yellow]Generating weekly summary...[/bold yellow]"):
+        summary = generate_weekly_summary(kb_dir, model=model)
+    console.print("\n[bold blue]Weekly Summary:[/bold blue]")
+    console.print(Markdown(summary))
+    console.print()
+
+
+def _handle_daily(kb_dir: Path, model: str | None) -> None:
+    """Generate daily summary."""
+    with console.status("[bold yellow]Generating daily summary...[/bold yellow]"):
+        summary = generate_daily_summary(kb_dir, model=model)
+    console.print("\n[bold blue]Today's Summary:[/bold blue]")
+    console.print(Markdown(summary))
+    console.print()
 
 
 def _wiki_regen_loop(kb_dir: Path, interval: int, stop_event: threading.Event) -> None:
@@ -404,6 +459,35 @@ def main() -> None:
                 _handle_save(kb_dir, args.model)
             except Exception as e:
                 console.print(f"[bold red]Save error:[/bold red] {e}")
+            continue
+
+        if lower.startswith(":task "):
+            desc = user_input[6:].strip()
+            if not desc:
+                console.print("[red]Usage: :task <description>[/red]")
+            else:
+                try:
+                    _handle_task(desc, kb_dir)
+                except Exception as e:
+                    console.print(f"[bold red]Task error:[/bold red] {e}")
+            continue
+
+        if lower == ":tasks":
+            _handle_tasks(kb_dir)
+            continue
+
+        if lower == ":daily":
+            try:
+                _handle_daily(kb_dir, args.model)
+            except Exception as e:
+                console.print(f"[bold red]Daily summary error:[/bold red] {e}")
+            continue
+
+        if lower == ":weekly":
+            try:
+                _handle_weekly(kb_dir, args.model)
+            except Exception as e:
+                console.print(f"[bold red]Weekly summary error:[/bold red] {e}")
             continue
 
         if lower == ":web":

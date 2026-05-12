@@ -155,6 +155,10 @@ kb-builder --web --web-port 9090
 | `:search <query>`  | Full-text search across all KB content            |
 | `:lint`            | Run LLM health checks on the KB                  |
 | `:save`            | File the last query answer back into the KB       |
+| `:task <text>`     | Log a timestamped task/activity                   |
+| `:tasks`           | Show recent task entries                          |
+| `:daily`           | Generate AI-powered daily summary                 |
+| `:weekly`          | Generate AI-powered weekly summary                |
 | `:web`             | Start the built-in web UI viewer                  |
 | `:help`            | Show help message                                 |
 | `:quit`            | Exit the application                              |
@@ -208,6 +212,30 @@ kb> :lint
   Connection Suggestions:
     - Link 'Python' and 'Python Glossary' articles
 
+kb> :task Fixed the authentication bug in login service
+
+  Task logged: Fixed the authentication bug in login service
+  2025-01-15 10:30 UTC
+
+kb> :task Reviewed PR #42 for the data pipeline team
+
+  Task logged: Reviewed PR #42 for the data pipeline team
+  2025-01-15 14:15 UTC
+
+kb> :tasks
+
+  Recent Task Entries:
+  Wed 2025-01-15 10:30  Fixed the authentication bug in login service
+  Wed 2025-01-15 14:15  Reviewed PR #42 for the data pipeline team
+
+kb> :weekly
+
+  Weekly Summary:
+  ## Major Deliverables
+  - Fixed authentication bug in login service
+  ## Team Contributions
+  - Reviewed PR #42 for the data pipeline team
+
 kb> :web
   Web UI started at http://localhost:8899
 
@@ -225,6 +253,7 @@ The app automatically detects whether you're **storing knowledge** or **asking a
 - Statements, facts, and notes are classified and saved to markdown files
 - Questions are answered by searching the knowledge base and using the LLM to synthesize an answer from stored content
 - Query answers can be filed back into the KB with `:save` so explorations "add up"
+- Use `:task` throughout the day to log activities, then `:weekly` for an AI summary
 
 ## Project Structure
 
@@ -239,6 +268,7 @@ kb_builder/
 ├── clip.py         # Web article clipping and ingestion
 ├── search.py       # Full-text search across KB content
 ├── lint_kb.py      # LLM-powered KB health checks
+├── tasks.py        # Timestamped task tracker with weekly summaries
 └── webui.py        # Built-in web UI viewer
 docs/
 ├── HIGH_LEVEL_DESIGN.md   # System architecture (Mermaid diagrams)
@@ -258,4 +288,5 @@ knowledge_base/     # Default directory for markdown files
 - **Linting**: LLM-powered health checks find inconsistencies, missing data, integrity issues, and suggest connections
 - **Storage Layer**: Manages markdown files — creates new files with title headers, appends formatted content
 - **Wiki Generator**: Builds `WIKI.md` with table of contents, section listings, backlinks, word counts, and timestamps
+- **Task Tracker**: Timestamped activity logging with AI-generated daily and weekly summaries
 - **Web UI**: Built-in HTTP server with dark-themed viewer, sidebar navigation, and topic filtering
