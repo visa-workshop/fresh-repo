@@ -11,7 +11,7 @@ A terminal application that listens to your input, uses an LLM (via [LiteLLM](ht
 5. **Ingest**: Import raw documents or clip web articles into the KB via LLM compilation
 6. **Wiki is auto-regenerated** periodically with backlinks and cross-references
 7. **Lint**: LLM health checks find inconsistencies, gaps, and suggest connections
-8. **Web UI**: Built-in viewer to browse your KB in the browser
+8. **Web UI**: Built-in retro arcade-styled viewer (pixel fonts, neon, CRT scanlines) to browse your KB
 
 ## Installation
 
@@ -289,4 +289,4 @@ knowledge_base/     # Default directory for markdown files
 - **Storage Layer**: Manages markdown files — creates new files with title headers, appends formatted content
 - **Wiki Generator**: Builds `WIKI.md` with table of contents, section listings, backlinks, word counts, and timestamps
 - **Task Tracker**: Timestamped activity logging with AI-generated daily and weekly summaries
-- **Web UI**: Built-in HTTP server with dark-themed viewer, sidebar navigation, and topic filtering
+- **Web UI**: Built-in HTTP server with a retro arcade theme — pixel/arcade fonts (Press Start 2P), neon glow, CRT scanlines, and an arcade HUD score panel showing topics/words/tasks counts
