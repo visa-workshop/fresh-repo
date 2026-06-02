@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+knowledge_base/*.md
+.kb_history
+tasks.jsonl
+!knowledge_base/.gitkeep
